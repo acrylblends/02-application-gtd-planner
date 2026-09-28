@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Start my-gtd:  bin/acryl web | desktop | cli   (flags: --port 3105)
+set -euo pipefail
+app="$(cd "$(dirname "$0")/.." && pwd)"
+exec node "/Users/musichen/_projects/p11_acr_agentcontextrelay/acryldev/acryl.worktrees/036-cordis-ecosystem-and-acryl-blends/scripts/blank.mjs" "${1:-web}" --dir "$app" "${@:2}"

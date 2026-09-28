@@ -1,0 +1,25 @@
+# GTD Planner: Blank plus Getting Things Done - inbox, triage, next actions, waiting for, someday/maybe, reference, calendar.
+# This is a Blueprint (a starter kit), not a project: acryl new <dir> --from git@github.com:acrylblends/02-application-gtd-planner.git
+apiVersion: blends.acryl.dev/v1alpha1
+kind: Blueprint
+metadata:
+  id: acryl.gtd
+  name: GTD Planner
+  version: 0.1.0
+  category: productivity
+  description: Getting Things Done - capture, triage, next actions, waiting for, someday/maybe, reference and a calendar, grown from the blank canvas.
+  license: MIT
+  visibility: public
+spec:
+  runtime: cordis
+  extends: acryl.blank
+  rows:
+    - id: brand
+      name: acryl-brand
+      config:
+        name: GTD Planner
+        tagline: Get it out of your head. Triage it. Do it.
+        accent: "#1971c2"
+        accentDark: "#4dabf7"
+    - id: acryl-gtd
+      name: acryl-gtd
