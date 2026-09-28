@@ -1,0 +1,21 @@
+name: "my-gtd"
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: The app definition is valid
+        run: npx --yes --package @webboxes/blends-core@0.1 blends-validate blend.yaml
+      - name: No secrets in the repository
+        run: npx --yes --package @webboxes/app-persistence@0.1 acryl-secret-check .
