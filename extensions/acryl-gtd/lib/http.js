@@ -27,7 +27,13 @@ export function error(message) {
 }
 
 function isLoopbackHostname(hostname) {
-  return hostname === '127.0.0.1' || hostname === '[::1]'
+  // 'localhost' is exactly as safe as 127.0.0.1/[::1] here - all three only ever resolve on-box - and it is
+  // what a user naturally types or a browser autocompletes. Caught live: opening the board via
+  // `http://localhost:<port>/` instead of `http://127.0.0.1:<port>/` 403'd every request, including the read-only
+  // state load, because this only ever recognized the literal `127.0.0.1` string the server's own `origin`
+  // constant is built from - a same-origin fetch from localhost carries `Host: localhost:<port>`, which never
+  // equals that constant no matter how "same-origin" the browser considers the request.
+  return hostname === '127.0.0.1' || hostname === '[::1]' || hostname === 'localhost'
 }
 
 export function isLoopbackAddress(address) {
@@ -47,31 +53,47 @@ function expectedLoopbackOrigin(expectedOrigin) {
   }
 }
 
-function exactHeaderOrigin(value) {
+// Same port as `expected`, any loopback hostname - not string-equal to `expected`'s own hostname. This is what
+// lets a request whose Host/Origin says `localhost:<port>` match a server whose own `origin` constant says
+// `127.0.0.1:<port>`, and vice versa; both are the same box, on the same port, and nothing else is.
+function isSameLoopbackOrigin(url, expected) {
+  return url.protocol === expected.protocol && url.port === expected.port && isLoopbackHostname(url.hostname)
+}
+
+function sameLoopbackHost(hostHeader, expected) {
+  if (hostHeader === undefined) return false
+  try {
+    return isSameLoopbackOrigin(new URL(`${expected.protocol}//${hostHeader}`), expected)
+  } catch {
+    return false
+  }
+}
+
+function exactHeaderOrigin(value, expected) {
   if (value === undefined) return undefined
   try {
     const url = new URL(value)
-    return url.origin === value ? value : undefined
+    return url.origin === value && isSameLoopbackOrigin(url, expected) ? url.origin : undefined
   } catch {
     return undefined
   }
 }
 
-function referrerOrigin(value) {
-  if (value === undefined) return undefined
-  try { return new URL(value).origin } catch { return undefined }
+function referrerIsSameLoopbackOrigin(value, expected) {
+  if (value === undefined) return false
+  try { return isSameLoopbackOrigin(new URL(value), expected) } catch { return false }
 }
 
-/** A mutating request must carry the exact Origin; a read-only GET may use same-origin fetch metadata instead. */
+/** A mutating request must carry a same-port loopback Origin; a read-only GET may use same-origin fetch metadata instead. */
 export function isSameOriginLoopbackRequest(req, expectedOrigin, mutating) {
   const expected = expectedLoopbackOrigin(expectedOrigin)
   if (expected === undefined || !isLoopbackAddress(req.socket.remoteAddress)) return false
-  if (req.headers.host?.toLowerCase() !== expected.host.toLowerCase()) return false
-  if (exactHeaderOrigin(req.headers.origin) === expected.origin) {
+  if (!sameLoopbackHost(req.headers.host, expected)) return false
+  if (exactHeaderOrigin(req.headers.origin, expected) !== undefined) {
     return req.headers['sec-fetch-site'] === undefined || req.headers['sec-fetch-site'] === 'same-origin'
   }
   if (mutating) return false
-  return req.headers['sec-fetch-site'] === 'same-origin' && referrerOrigin(req.headers.referer) === expected.origin
+  return req.headers['sec-fetch-site'] === 'same-origin' && referrerIsSameLoopbackOrigin(req.headers.referer, expected)
 }
 
 export function isJsonRequest(req) {
