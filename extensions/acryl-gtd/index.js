@@ -5,14 +5,14 @@
  * same shape as acryl-organizer. The data lives in `<workspace>/.acryl/gtd.json`. Remove the plugin and the tools
  * go; the data file stays with the project.
  *
- * The board is its own page (`/gtd`, `lib/board-page.js`), not a chat card: buckets, an inline-triage list with
+ * The board is its own page (the app's root, `lib/board-page.js`), not a chat card: buckets, an inline-triage list with
  * a context-tag filter, a kanban board, a day/week/month calendar and project progress, reading and writing the
  * same `.acryl/gtd.json` the tools use, through same-origin loopback routes this plugin owns. It started as a
  * `tool.call.toolview` card instead - wrong on two counts, found live: a card has no built-in way to call another
  * tool (real interactivity needs its own Host route regardless), and every tool call in this chat collapses
  * behind a "N tool calls" row the user must click (dsh-client-ui-chat hardcodes that expand state to `false`, no
  * override a plugin can set) - a todo app whose own board only shows up after asking a chat bot to open it and
- * then clicking to expand is broken UX. `client.js` is now just a link to `/gtd`, not a second implementation of
+ * then clicking to expand is broken UX. `client.js` is now just a link to the board's own root URL, not a second implementation of
  * the board (two divergent copies of the same view is the mistake DRY exists to name).
  * `lib/http.js` inlines the loopback/JSON-body checks rather than depending on `acryl-loopback-http`: this
  * extension is vendored into whatever project grows from the Blueprint, outside the monorepo's own workspace
@@ -103,8 +103,8 @@ export function apply(ctx) {
       (state, args) => { const due = domain.agenda(state, args.day); return `Due ${args.day}:\n${list(due.map(itemLine))}` }),
     useCase({ name: 'gtd_upcoming', description: 'What is due over the next few days (default 7).', parameters: { from: { type: 'string', required: true, description: 'First day, YYYY-MM-DD' }, days: { type: 'number', description: 'How many days (default 7)' } } },
       (state, args) => { const weeks = domain.upcoming(state, args.from, args.days === undefined ? 7 : Number(args.days)); return weeks.length === 0 ? '(nothing due)' : weeks.map(day => `${day.day}:\n${list(day.items.map(itemLine))}`).join('\n') }),
-    useCase({ name: 'gtd_board', description: 'Point to the GTD board (a page at /gtd, not a chat view): buckets, an inline-triage list with a context filter, a kanban board, a day/week/month calendar and project progress. Call this once to tell the user where it lives; they should bookmark it rather than ask for it again.', parameters: {} },
-      state => `The board lives at /gtd - open it directly, it's the app's own page: ${state.items.length} item(s) across ${domain.projects(state).length} project(s) right now.`),
+    useCase({ name: 'gtd_board', description: 'Point to the GTD board (the app\'s own root page, not a chat view): buckets, an inline-triage list with a context filter, a kanban board, a day/week/month calendar and project progress. Call this once to tell the user where it lives; they should bookmark it rather than ask for it again.', parameters: {} },
+      state => `The board is this app's root page - open it directly, no chat needed: ${state.items.length} item(s) across ${domain.projects(state).length} project(s) right now.`),
   ]
   for (const tool of tools) ctx.effect(() => ctx.tools.register(tool), `acryl-gtd: ${tool.name}`)
 
@@ -116,11 +116,15 @@ export function apply(ctx) {
   // page's own load. Checked live: a custom plugin route is NOT covered by the app's own token/cookie gate -
   // that only wraps the shipped app shell, not routes a plugin registers - so this floor (loopback address only,
   // the same one acryl-loopback-http states for every "private" route) is load-bearing, not defense in depth.
-  // A bare `curl http://127.0.0.1:<port>/gtd` from off-box is refused; from the same machine it is not - no
-  // weaker than the app's own API routes are for anyone who already has a shell on the box.
+  // A bare `curl http://127.0.0.1:<port>/` from off-box is refused; from the same machine it is not - no weaker
+  // than the app's own API routes are for anyone who already has a shell on the box.
+  //
+  // Served at root, not /gtd: this app IS the GTD planner (owner decision, 2026-09-28) - there is no separate
+  // chat-first product this board is a feature of, so the bare origin is the product, not a sub-route a user has
+  // to be told to open.
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
-    path: '/gtd',
+    path: '/',
     handler: (req, res) => {
       if (!isLoopbackAddress(req.socket.remoteAddress)) { res.statusCode = 403; res.end(); return }
       if (req.method !== 'GET') { res.statusCode = 405; res.setHeader('allow', 'GET'); res.end(); return }

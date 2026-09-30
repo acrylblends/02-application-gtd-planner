@@ -4,7 +4,7 @@ Category **02 · Application** — Productivity · Personal information manageme
 
 An [ACRYL Blends](https://acrylblends.github.io) Blueprint: Getting Things Done (David Allen) grown from `acryl.blank`. A fresh, MIT-licensed
 implementation - capture, triage (the one GTD decision), next actions, waiting for, someday/maybe, reference, and a calendar, with an interactive
-board (list, kanban, calendar, project progress) served at `/gtd`.
+board (list, kanban, calendar, project progress) served at the app's own root.
 
 ## Start a project from this Blueprint
 
@@ -14,7 +14,7 @@ cd my-planner
 bin/acryl web
 ```
 
-Open the printed URL, then `/gtd` for the board (no token needed - it is a loopback-gated page, not a chat session).
+Open the printed URL - the board is the app's own root page (no token needed - it is a loopback-gated page, not a chat session).
 
 ## What's here
 
