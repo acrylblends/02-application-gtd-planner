@@ -21,9 +21,11 @@
     "bundle": {
       "patch": "./cordis.patch.yml"
     },
+    "requiresAcrylPackages": ["acryl-app-shell"],
     "client": {
-      "inject": [
-        "@deepseek-ai/dsh-client-ui-primitives"
+      "external": [
+        "@deepseek-ai/dsh-client-ui-primitives",
+        "acryl-app-shell/client"
       ],
       "platform": "web"
     }

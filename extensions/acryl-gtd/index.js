@@ -1,31 +1,35 @@
 /**
  * acryl-gtd: Getting Things Done (David Allen) - capture, triage, next actions, waiting for, someday/maybe,
- * reference, and a calendar of due dates - grown from the Blank Blueprint as one ordinary Cordis plugin. A fresh
+ * reference, a board and a calendar - grown from the Blank Blueprint as one ordinary Cordis plugin. A fresh
  * implementation of the method, not a port of any other GTD app; tools the agent calls on the user's behalf, the
  * same shape as acryl-organizer. The data lives in `<workspace>/.acryl/gtd.json`. Remove the plugin and the tools
  * go; the data file stays with the project.
  *
- * The board is its own page (the app's root, `lib/board-page.js`), not a chat card: buckets, an inline-triage list with
- * a context-tag filter, a kanban board, a day/week/month calendar and project progress, reading and writing the
- * same `.acryl/gtd.json` the tools use, through same-origin loopback routes this plugin owns. It started as a
- * `tool.call.toolview` card instead - wrong on two counts, found live: a card has no built-in way to call another
- * tool (real interactivity needs its own Host route regardless), and every tool call in this chat collapses
- * behind a "N tool calls" row the user must click (dsh-client-ui-chat hardcodes that expand state to `false`, no
- * override a plugin can set) - a todo app whose own board only shows up after asking a chat bot to open it and
- * then clicking to expand is broken UX. `client.js` is now just a link to the board's own root URL, not a second implementation of
- * the board (two divergent copies of the same view is the mistake DRY exists to name).
+ * The board is a real panel of this app's own main UI (`client.js`, a `desktop.main` registration through
+ * `acryl-app-shell`), not a page the Host serves over HTTP. Two earlier versions of this plugin got this wrong in
+ * two different ways, both found live and both rejected by the owner directly: a `tool.call.toolview` chat card
+ * (every tool call collapses behind a "N tool calls" row the user has to click - a todo app that only shows up
+ * after asking a chat bot to open it is broken UX), then a Host-served HTML page at `/` reached by a browser
+ * navigation (`"we have routers for custom apps - that's bullshit... why we need routes?"` - a Project Blend is
+ * meant to become one standalone product, and every other piece of UI in the whole ecosystem is a slot
+ * registration rendered inline in the same window, never a URL a user has to be told to open). See
+ * `specs/036-cordis-ecosystem-and-acryl-blends/blend-instance-design.md` section 0a in the framework repo for the
+ * rule this follows: a domain plugin's own main UI is always a `desktop.main`/`desktop.sidebar` slot
+ * registration, never a Host route. The three JSON API routes below are unaffected by any of this - a real UI
+ * still needs a real way to read and write server-side state; what changed is only how the board itself is
+ * presented, not how it talks to the Host.
  * `lib/http.js` inlines the loopback/JSON-body checks rather than depending on `acryl-loopback-http`: this
  * extension is vendored into whatever project grows from the Blueprint, outside the monorepo's own workspace
  * linking, and (discovered live, in a Blank-grown app) nothing guarantees that package is resolvable there -
  * `acryl-agent-control`, the one row that does depend on it, is not part of Blank's rows at all.
  *
- * Surfaces: tui web desktop (tools need no browser; the board needs `webServer`, web/desktop only).
+ * Surfaces: tui web desktop (tools need no browser; the board needs `webServer` and `acryl-app-shell`, web/desktop
+ * only - `client.js` degrades to nothing on tui, where there is no main-surface slot to claim).
  */
 import { isAbsolute, join } from 'node:path'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import * as domain from './lib/domain.js'
-import { boardPageHtml } from './lib/board-page.js'
-import { error, finishJson, isLoopbackAddress, isSameOriginLoopbackRequest, parseJsonPostBody, INVALID_BODY } from './lib/http.js'
+import { error, finishJson, isSameOriginLoopbackRequest, parseJsonPostBody, INVALID_BODY } from './lib/http.js'
 import { fileStore, storeFor } from './lib/store.js'
 
 export const name = 'acryl-gtd'
@@ -40,10 +44,10 @@ export const name = 'acryl-gtd'
 export const inject = ['tools', 'webServer', 'appInstance']
 
 /**
- * The board route body may name its own workspace (`cwd`); when it does not, the data lives with the app itself
- * (its instance home) - a todo app's own tasks belong to the app, not to whatever coding workspace happens to be
- * selected in chat. This is also what makes the board a URL you can just open: no query param, no chat message,
- * required.
+ * A board request may name its own workspace (`cwd`); when it does not, the data lives with the app itself (its
+ * instance home) - a todo app's own tasks belong to the app, not to whatever coding workspace happens to be
+ * selected in chat. This is also what makes the board load with no setup: no query param, no chat message,
+ * required - it is simply the app's own main view from the moment the app opens.
  */
 function resolveCwd(value, appHome) {
   if (value === undefined || value === null || value === '') return appHome
@@ -103,38 +107,15 @@ export function apply(ctx) {
       (state, args) => { const due = domain.agenda(state, args.day); return `Due ${args.day}:\n${list(due.map(itemLine))}` }),
     useCase({ name: 'gtd_upcoming', description: 'What is due over the next few days (default 7).', parameters: { from: { type: 'string', required: true, description: 'First day, YYYY-MM-DD' }, days: { type: 'number', description: 'How many days (default 7)' } } },
       (state, args) => { const weeks = domain.upcoming(state, args.from, args.days === undefined ? 7 : Number(args.days)); return weeks.length === 0 ? '(nothing due)' : weeks.map(day => `${day.day}:\n${list(day.items.map(itemLine))}`).join('\n') }),
-    useCase({ name: 'gtd_board', description: 'Point to the GTD board (the app\'s own root page, not a chat view): buckets, an inline-triage list with a context filter, a kanban board, a day/week/month calendar and project progress. Call this once to tell the user where it lives; they should bookmark it rather than ask for it again.', parameters: {} },
-      state => `The board is this app's root page - open it directly, no chat needed: ${state.items.length} item(s) across ${domain.projects(state).length} project(s) right now.`),
+    useCase({ name: 'gtd_board', description: 'A one-line summary of the board the user is already looking at (buckets, kanban, calendar, project progress live in the app\'s own main view - never ask the user to open or find it, it is already open).', parameters: {} },
+      state => `${state.items.length} item(s) across ${domain.projects(state).length} project(s) right now.`),
   ]
   for (const tool of tools) ctx.effect(() => ctx.tools.register(tool), `acryl-gtd: ${tool.name}`)
 
   const origin = `http://127.0.0.1:${String(ctx.webServer.port)}`
 
-  // The board page itself: a plain top-level navigation (a pasted or bookmarked URL), not a fetch() call - it
-  // carries no Origin header and no same-origin Sec-Fetch-Site, so the mutating-style same-origin check below
-  // (right for the API routes, which this page's own script calls with real fetch metadata) would refuse the
-  // page's own load. Checked live: a custom plugin route is NOT covered by the app's own token/cookie gate -
-  // that only wraps the shipped app shell, not routes a plugin registers - so this floor (loopback address only,
-  // the same one acryl-loopback-http states for every "private" route) is load-bearing, not defense in depth.
-  // A bare `curl http://127.0.0.1:<port>/` from off-box is refused; from the same machine it is not - no weaker
-  // than the app's own API routes are for anyone who already has a shell on the box.
-  //
-  // Served at root, not /gtd: this app IS the GTD planner (owner decision, 2026-09-28) - there is no separate
-  // chat-first product this board is a feature of, so the bare origin is the product, not a sub-route a user has
-  // to be told to open.
-  ctx.effect(() => ctx.webServer.register({
-    kind: 'exact',
-    path: '/',
-    handler: (req, res) => {
-      if (!isLoopbackAddress(req.socket.remoteAddress)) { res.statusCode = 403; res.end(); return }
-      if (req.method !== 'GET') { res.statusCode = 405; res.setHeader('allow', 'GET'); res.end(); return }
-      res.statusCode = 200
-      res.setHeader('content-type', 'text/html; charset=utf-8')
-      res.setHeader('cache-control', 'no-store')
-      res.end(boardPageHtml())
-    },
-  }), 'acryl-gtd: board page')
-
+  // Only the JSON API remains here. The board itself is `client.js`'s `desktop.main` registration, loaded as
+  // part of the app's own UI bundle - there is no page for a Host route to serve.
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
     path: '/api/acryl-gtd/state',
