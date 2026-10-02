@@ -124,7 +124,10 @@ export function apply(ctx) {
       if (!isSameOriginLoopbackRequest(req, origin, false)) return finishJson(res, 403, error('forbidden'))
       let cwd
       try { cwd = resolveCwd(new URL(req.url ?? '', origin).searchParams.get('cwd'), ctx.appInstance.home) } catch (cause) { return finishJson(res, 400, error(cause.message)) }
-      finishJson(res, 200, storeForCwd(cwd).load())
+      // The board's own "Ask the agent" needs a real DSH Workspace to exist before it can show a chat input at
+      // all (otherwise: a permanent "Choose a workspace to start" picker, with nothing to pick - measured
+      // live). `client.js` auto-registers this path as the app's own, one-time, no-picker workspace.
+      finishJson(res, 200, { ...storeForCwd(cwd).load(), cwd })
     },
   }), 'acryl-gtd: state route')
 

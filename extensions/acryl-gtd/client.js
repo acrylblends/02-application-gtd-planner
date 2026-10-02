@@ -123,11 +123,31 @@ function ListView({ state, onTriage }) {
         h(MoveButtons, { item, onTriage }))))
 }
 
+/** HTML5 drag-and-drop between board columns; `onTriage` (the existing capture/triage API) is the only write
+ * path either way, so a drag and a MoveButtons click always leave the board in the same state. */
 function BoardView({ state, onTriage }) {
+  const [draggingId, setDraggingId] = useState(undefined)
+  const [overStatus, setOverStatus] = useState(undefined)
   return h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0,1fr))', gap: 10 } },
     BUCKETS.map((status) => {
       const items = state.items.filter((item) => item.status === status)
-      return h('div', { key: status, style: { border: '1px solid var(--dsw-alias-border-l1)', borderRadius: 8, minHeight: 60 } },
+      return h('div', {
+        key: status,
+        style: {
+          border: overStatus === status ? '1.5px solid #1971c2' : '1px solid var(--dsw-alias-border-l1)',
+          borderRadius: 8, minHeight: 60,
+          background: overStatus === status ? 'var(--dsw-alias-interactive-bg-hover)' : 'transparent',
+        },
+        onDragOver: (event) => { event.preventDefault(); setOverStatus(status) },
+        onDragLeave: () => { setOverStatus((current) => current === status ? undefined : current) },
+        onDrop: (event) => {
+          event.preventDefault()
+          setOverStatus(undefined)
+          const id = Number(event.dataTransfer.getData('text/plain')) || draggingId
+          if (id !== undefined) onTriage(id, status)
+          setDraggingId(undefined)
+        },
+      },
         h('h3', {
           style: { fontSize: 12, margin: 0, padding: '7px 8px', borderBottom: '1px solid var(--dsw-alias-border-l1)', display: 'flex', gap: 6, alignItems: 'center' },
         },
@@ -137,7 +157,17 @@ function BoardView({ state, onTriage }) {
         h('div', { style: { padding: 6, display: 'flex', flexDirection: 'column', gap: 6 } },
           items.map((item) => h('div', {
             key: item.id,
-            style: { border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 6, padding: '6px 8px' },
+            draggable: true,
+            onDragStart: (event) => {
+              event.dataTransfer.setData('text/plain', String(item.id))
+              event.dataTransfer.effectAllowed = 'move'
+              setDraggingId(item.id)
+            },
+            onDragEnd: () => { setDraggingId(undefined); setOverStatus(undefined) },
+            style: {
+              border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 6, padding: '6px 8px',
+              cursor: 'grab', opacity: draggingId === item.id ? 0.4 : 1,
+            },
           },
             item.project && h('div', { style: { fontSize: 10, color: 'var(--dsw-alias-label-secondary)', marginBottom: 4 } }, item.project),
             h('div', null, item.title),
@@ -230,12 +260,28 @@ function ProjectsView({ state }) {
 
 const VIEWS = { list: ListView, board: BoardView, calendar: CalendarView, projects: ProjectsView }
 
+/** Registers the app's own folder as a real DSH Workspace, once, the first time it is known. Without this,
+ * "Ask the agent" has no workspace to select and gets stuck on a permanent "Choose a workspace to start"
+ * picker with nothing in it to pick (measured live) - a DSH chat cannot open at all until some Workspace
+ * exists, and a GTD app has no "open folder" UI of its own to create one by hand. */
+function useAutoWorkspace(getWorkspaces, cwd) {
+  const created = React.useRef(false)
+  useEffect(() => {
+    if (created.current || cwd === undefined) return
+    const workspaces = getWorkspaces()
+    if (workspaces === undefined) return // not yet provided; the next render (state/cwd unchanged) retries
+    created.current = true
+    workspaces.create({ path: cwd }).catch(() => { created.current = false })
+  })
+}
+
 /** The board: this plugin's entire `desktop.main`. `renderConversation` stays reachable through a small
  * toggle rather than a full tab-strip rebuild - this is a todo app, not a second IDE. */
-function GtdMain({ renderConversation }) {
+function GtdMain({ renderConversation, getWorkspaces }) {
   const { state, error, capture, triage } = useGtdState()
   const [tab, setTab] = useState('list')
   const [showChat, setShowChat] = useState(false)
+  useAutoWorkspace(getWorkspaces, state.cwd)
   if (showChat) {
     return h('div', { style: { display: 'flex', flexDirection: 'column', height: '100%' } },
       h('div', { style: { padding: '8px 12px', borderBottom: '1px solid var(--dsw-alias-border-l1)' } },
@@ -264,6 +310,7 @@ exports.apply = function apply(ctx) {
   ctx.slots.inject('desktop.main', () => ctx.slots.register({
     name: 'desktop.main',
     priority: -1, // lower wins for a `single` slot; beats acryl-app-shell's own fallback (100)
+    inject: () => ({ getWorkspaces: () => ctx.get('workspaces') }),
   }, GtdMain))
 }
 
