@@ -13,6 +13,7 @@
 //           server-side state; only the presentation changed.
 window.__ModuleLoader__.load({ id: 'acryl-gtd', factory: (require) => {
 var module = { exports: {} }; var exports = module.exports;
+console.warn('[acryl-gtd] module factory is running (require() resolved)')
 
 const React = require('react')
 const { useCallback, useEffect, useMemo, useState } = React
@@ -287,6 +288,7 @@ function useAutoWorkspace(getWorkspaces, cwd) {
 /** The board: this plugin's entire `desktop.main`. `renderConversation` stays reachable through a small
  * toggle rather than a full tab-strip rebuild - this is a todo app, not a second IDE. */
 function GtdMain({ renderConversation, getWorkspaces }) {
+  console.warn('[acryl-gtd] GtdMain IS rendering (desktop.main slot claimed successfully)')
   const { state, error, capture, triage } = useGtdState()
   const [tab, setTab] = useState('list')
   const [showChat, setShowChat] = useState(false)
@@ -314,9 +316,20 @@ function GtdMain({ renderConversation, getWorkspaces }) {
 exports.inject = ['slots', 'theme']
 
 exports.apply = function apply(ctx) {
-  console.log('[acryl-gtd] client.js build:', BUILD_STAMP)
-  const environment = resolveShellEnvironment(window.location.hash)
-  if (environment.mode !== 'advanced') return // compatibility mode keeps the stock upstream frame
+  // console.warn, not .log: Desktop's own renderer->Host console bridge (electron-shell-generation.ts) only
+  // forwards warning/error level messages into the persisted Host log - this is the only way to see from the
+  // Host side whether this file's apply() even ran in the renderer at all, since Desktop's renderer process
+  // has no other externally-reachable debugging surface (no --remote-debugging-port, no token-free local port).
+  console.warn('[acryl-gtd] client.js build:', BUILD_STAMP, '- apply() is running')
+  const detected = resolveShellEnvironment(window.location.hash)
+  console.warn('[acryl-gtd] detected shell environment:', JSON.stringify(detected))
+  // GTD has no "compatibility mode" fallback content of its own to show instead - unlike the IDE
+  // (plugins/acryl-workspace), whose compatibility/advanced split is a real user-facing toggle between two
+  // different UIs it owns, this extension IS the whole app. Desktop's own compatibility/advanced setting is an
+  // IDE-only concept (defaults to compatibility for a brand-new app); respecting it here silently left the
+  // stock DSH chat on screen on every single Desktop boot, no error, nothing - found live by adding this exact
+  // log line, since the Host's own log had no way to show whether this file's apply() even reached this point.
+  const environment = { mode: 'advanced', platform: detected.platform }
   applyAdvancedShell(ctx, environment)
   ctx.slots.inject('desktop.main', () => ctx.slots.register({
     name: 'desktop.main',
