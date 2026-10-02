@@ -20,6 +20,15 @@ const h = React.createElement
 const { Button, Input, Tag } = require('@deepseek-ai/dsh-client-ui-primitives')
 const { applyAdvancedShell, resolveShellEnvironment } = require('acryl-app-shell/client')
 
+// Bumped by hand on every edit to this file. This extension is a buildless, hand-written client bundle
+// installed into a per-profile copy (.dsh/profiles/<surface>/node_modules/acryl-gtd) that a plain app restart
+// does NOT refresh from source for a PROJECT-scoped extension (acryl-extension-context's own security
+// boundary: a changed project source is only ever reported, never auto-applied, so a git pull cannot silently
+// run new code) - only a full `rm -rf .dsh` or an explicit `/reload` picks up an edit. Rendered in the board's
+// own header and logged on boot so a stale install is visible at a glance, in the browser, not just grep'd
+// from a shell - this is the engineer's sanity check that was missing before.
+const BUILD_STAMP = '2026-10-02T16:50Z-drag-drop-workspace-autocreate'
+
 const BUCKETS = ['inbox', 'next', 'waiting', 'someday', 'reference']
 const LABEL = { inbox: 'Inbox', next: 'Next Actions', waiting: 'Waiting For', someday: 'Someday/Maybe', reference: 'Reference' }
 const DOT = { inbox: '#f59f00', next: '#4dabf7', waiting: '#ff6b6b', someday: '#868e96', reference: '#51cf66' }
@@ -292,6 +301,7 @@ function GtdMain({ renderConversation, getWorkspaces }) {
   return h('div', { style: { height: '100%', overflowY: 'auto', padding: '14px 16px 40px' } },
     h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 } },
       h('h1', { style: { fontSize: 15, margin: 0, fontWeight: 700 } }, 'GTD'),
+      h('span', { title: 'client.js build stamp - if this looks old, the installed copy is stale: rm -rf .dsh and restart', style: { fontSize: 9, color: 'var(--dsw-alias-label-secondary)', opacity: 0.5, fontFamily: 'monospace' } }, BUILD_STAMP),
       h('span', { style: { marginLeft: 'auto', color: 'var(--dsw-alias-label-secondary)', fontSize: 12 } }, state.items.length + ' item(s)'),
       h(Button, { variant: 'ghost', size: 'sm', onClick: () => { setShowChat(true) } }, 'Ask the agent')),
     h('div', { style: { display: 'flex', gap: 6, marginBottom: 12 } },
@@ -304,6 +314,7 @@ function GtdMain({ renderConversation, getWorkspaces }) {
 exports.inject = ['slots', 'theme']
 
 exports.apply = function apply(ctx) {
+  console.log('[acryl-gtd] client.js build:', BUILD_STAMP)
   const environment = resolveShellEnvironment(window.location.hash)
   if (environment.mode !== 'advanced') return // compatibility mode keeps the stock upstream frame
   applyAdvancedShell(ctx, environment)

@@ -87,7 +87,12 @@ const itemLine = item => {
 }
 const projectLine = summary => `${summary.project}: ${summary.open} open, ${summary.done} done`
 
+// Bumped by hand on every edit to this file; logged on boot so a stale Host install (an un-synced
+// .dsh/profiles/<surface>/node_modules/acryl-gtd copy) is visible in the Host's own log, not just guessed at.
+const BUILD_STAMP = '2026-10-02T16:50Z-cwd-in-state-response'
+
 export function apply(ctx) {
+  ctx.logger.info(`[acryl-gtd] index.js build: ${BUILD_STAMP}`)
   const tools = [
     useCase({ name: 'gtd_capture', description: 'Capture something into the inbox - get it out of your head. Nothing is decided yet.', parameters: { title: { type: 'string', required: true, description: 'What it is' }, note: { type: 'string', description: 'Extra detail' }, due: { type: 'string', description: 'Due day, YYYY-MM-DD, if it has one' }, tags: { type: 'array', items: { type: 'string' }, description: 'Contexts, e.g. @calls, @errands' } } },
       (state, args, store) => { const next = domain.capture(state, args); store.save(next); return `Captured ${itemLine(next.items.at(-1))}` }),
